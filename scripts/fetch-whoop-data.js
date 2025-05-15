@@ -6,11 +6,19 @@ async function fetchWhoopData() {
   try {
     // Get new access token using refresh token
     console.log('Refreshing access token...');
-    const tokenResponse = await axios.post('https://api.prod.whoop.com/oauth/oauth2/token', {
-      grant_type: 'refresh_token',
-      refresh_token: process.env.WHOOP_REFRESH_TOKEN,
-      client_id: process.env.WHOOP_CLIENT_ID,
-      client_secret: process.env.WHOOP_CLIENT_SECRET
+    
+    // Create form data for token refresh - use URLSearchParams for proper format
+    const params = new URLSearchParams();
+    params.append('grant_type', 'refresh_token');
+    params.append('refresh_token', process.env.WHOOP_REFRESH_TOKEN);
+    params.append('client_id', process.env.WHOOP_CLIENT_ID);
+    params.append('client_secret', process.env.WHOOP_CLIENT_SECRET);
+    
+    // Use the same token endpoint that worked for you before
+    const tokenResponse = await axios.post('https://api.prod.whoop.com/oauth/oauth2/token', params, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
     });
 
     const accessToken = tokenResponse.data.access_token;
@@ -23,6 +31,13 @@ async function fetchWhoopData() {
     const headers = {
       'Authorization': `Bearer ${accessToken}`
     };
+
+    // Ensure data directory exists
+    const dataDir = path.join(__dirname, '..', 'data');
+    if (!fs.existsSync(dataDir)) {
+      console.log('Creating data directory...');
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
 
     // Get recovery data
     console.log('Fetching recovery data...');
@@ -39,12 +54,6 @@ async function fetchWhoopData() {
     // Get workout data
     console.log('Fetching workout data...');
     const workoutResponse = await axios.get('https://api.prod.whoop.com/v1/cycle/workout', { headers });
-
-    // Ensure data directory exists
-    const dataDir = path.join(__dirname, '..', 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
 
     // Write data to files
     fs.writeFileSync(path.join(dataDir, 'recovery.json'), JSON.stringify(recoveryResponse.data, null, 2));
@@ -72,7 +81,11 @@ async function fetchWhoopData() {
     console.error('Error fetching Whoop data:', error.message);
     if (error.response) {
       console.error('Response status:', error.response.status);
-      console.error('Response data:', error.response.data);
+      console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+    } else if (error.request) {
+      console.error('No response received:', error.request);
+    } else {
+      console.error('Error details:', error);
     }
     process.exit(1);
   }
