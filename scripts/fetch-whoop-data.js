@@ -1,13 +1,24 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const { getAccessToken } = require('./refresh-token');
 
 async function fetchWhoopData() {
   try {
     console.log('Starting Whoop data fetching process...');
     
-    // Access token hardcoded directly in the file
-    const accessToken = "j-kQQGdjw0aRi2hdrPvAwPfB4ot8DBkT3y7zfv_XiP8.hnDJYY5f2VCBw3aMsqpYR93JqLC7HJsY6OMaYWcc6KA";
+    // Get credentials from environment variables (GitHub Secrets)
+    const clientId = process.env.WHOOP_CLIENT_ID;
+    const clientSecret = process.env.WHOOP_CLIENT_SECRET;
+    const refreshToken = process.env.WHOOP_REFRESH_TOKEN;
+    
+    if (!clientId || !clientSecret || !refreshToken) {
+      throw new Error('Missing required environment variables. Make sure WHOOP_CLIENT_ID, WHOOP_CLIENT_SECRET, and WHOOP_REFRESH_TOKEN are set in your GitHub secrets.');
+    }
+    
+    // Get a fresh access token using the refresh token
+    const tokens = await getAccessToken(clientId, clientSecret, refreshToken);
+    const accessToken = tokens.access_token;
     
     // API base URL
     const API_BASE_URL = 'https://api.prod.whoop.com/developer/v1';
@@ -134,6 +145,13 @@ async function fetchWhoopData() {
       JSON.stringify(combinedData, null, 2)
     );
     
+    // If we got a new refresh token, we should update it in GitHub secrets
+    // This requires additional setup and is not implemented here
+    if (tokens.refresh_token && tokens.refresh_token !== refreshToken) {
+      console.log('New refresh token received. You should update your GitHub secret WHOOP_REFRESH_TOKEN with this value.');
+      console.log('For security reasons, the token is not printed here.');
+    }
+    
     console.log('Successfully fetched and saved Whoop data');
     
     return 0;
@@ -157,13 +175,13 @@ async function fetchWhoopData() {
         fs.mkdirSync(dataDir, { recursive: true });
       }
       
-      // Create a sample file with the same structure as expected by the dashboard
+      // Create a file with error info
       fs.writeFileSync(path.join(dataDir, 'all-data.json'), JSON.stringify({
         error: true,
         errorMessage: error.message,
         status: 'API request failed',
         lastUpdated: new Date().toISOString(),
-        // Include sample structure for the dashboard
+        // Include empty structure for the dashboard
         recovery: [],
         sleep: [],
         workout: [],
