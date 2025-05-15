@@ -6,28 +6,26 @@ async function fetchWhoopData() {
   try {
     console.log('Refreshing access token...');
     
-    // Create form data using URLSearchParams, which is the standard way to create form data
+    // Create form data using URLSearchParams
     const params = new URLSearchParams();
     params.append('grant_type', 'refresh_token');
     params.append('refresh_token', process.env.WHOOP_REFRESH_TOKEN);
     params.append('client_id', process.env.WHOOP_CLIENT_ID);
     params.append('client_secret', process.env.WHOOP_CLIENT_SECRET);
-    // Add redirect_uri which might be required
-    params.append('redirect_uri', 'https://mouawaz.github.io/whoop-dashboard/callback.html');
+    // Note: redirect_uri is typically NOT required for refresh token flow
     
-    // Log the parameters for debugging
+    // Log the parameters for debugging (without exposing secrets)
     console.log('Parameters:', {
       grant_type: 'refresh_token',
-      client_id: 'CLIENT_ID_PLACEHOLDER', // Don't log the actual ID
-      client_secret: 'CLIENT_SECRET_PLACEHOLDER', // Don't log the actual secret
-      refresh_token: 'REFRESH_TOKEN_PLACEHOLDER', // Don't log the actual token
-      redirect_uri: 'https://mouawaz.github.io/whoop-dashboard/callback.html'
+      client_id: 'CLIENT_ID_PLACEHOLDER',
+      client_secret: 'CLIENT_SECRET_PLACEHOLDER',
+      refresh_token: 'REFRESH_TOKEN_PLACEHOLDER'
     });
 
-    // Make the token refresh request - use axios.post with string data
+    // Make the token refresh request - use the correct endpoint
     const tokenResponse = await axios({
       method: 'post',
-      url: 'https://api.prod.whoop.com/oauth/oauth2/token',
+      url: 'https://api.prod.whoop.com/oauth/token',
       data: params.toString(),
       headers: { 
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -53,20 +51,67 @@ async function fetchWhoopData() {
     const accessToken = tokenResponse.data.access_token;
     const newRefreshToken = tokenResponse.data.refresh_token;
     
-    // Create a sample data file as a test
+    // Now that we have a valid token, let's fetch the actual Whoop data
+    console.log('Fetching Whoop data...');
+    
+    // Get recovery data
+    const recoveryResponse = await axios({
+      method: 'get',
+      url: 'https://api.prod.whoop.com/activities/recovery',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    
+    // Get sleep data
+    const sleepResponse = await axios({
+      method: 'get',
+      url: 'https://api.prod.whoop.com/activities/sleep',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    
+    // Get workout data
+    const workoutResponse = await axios({
+      method: 'get',
+      url: 'https://api.prod.whoop.com/activities/workout',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    
+    // Get cycle data
+    const cycleResponse = await axios({
+      method: 'get',
+      url: 'https://api.prod.whoop.com/activities/cycle',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    
+    // Create data directory if it doesn't exist
     const dataDir = path.join(__dirname, '..', 'data');
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     
-    // Write a basic file with the token info (not the tokens themselves)
-    fs.writeFileSync(path.join(dataDir, 'all-data.json'), JSON.stringify({
-      tokenInfo: tokenInfo,
-      status: 'Token refresh successful',
-      lastUpdated: new Date().toISOString()
-    }, null, 2));
+    // Combine all data
+    const combinedData = {
+      lastUpdated: new Date().toISOString(),
+      recovery: recoveryResponse.data.records || [],
+      sleep: sleepResponse.data.records || [],
+      workout: workoutResponse.data.records || [],
+      cycle: cycleResponse.data.records || []
+    };
     
-    console.log('Sample data file created');
+    // Write the data to file
+    fs.writeFileSync(
+      path.join(dataDir, 'all-data.json'), 
+      JSON.stringify(combinedData, null, 2)
+    );
+    
+    console.log('Successfully fetched and saved Whoop data');
     
     // If there's a new refresh token, log it for updating GitHub secrets
     if (newRefreshToken && newRefreshToken !== process.env.WHOOP_REFRESH_TOKEN) {
