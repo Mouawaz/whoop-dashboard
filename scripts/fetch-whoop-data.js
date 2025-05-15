@@ -6,12 +6,8 @@ async function fetchWhoopData() {
   try {
     console.log('Starting Whoop data fetching process...');
     
-    // Use the direct access token instead of refresh flow
-    const accessToken = process.env.WHOOP_ACCESS_TOKEN;
-    
-    if (!accessToken) {
-      throw new Error('WHOOP_ACCESS_TOKEN environment variable is not set');
-    }
+    // Access token hardcoded directly in the file
+    const accessToken = "j-kQQGdjw0aRi2hdrPvAwPfB4ot8DBkT3y7zfv_XiP8.hnDJYY5f2VCBw3aMsqpYR93JqLC7HJsY6OMaYWcc6KA";
     
     // API base URL
     const API_BASE_URL = 'https://api.prod.whoop.com/developer/v1';
