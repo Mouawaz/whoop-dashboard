@@ -1,7 +1,8 @@
 {
   "error": true,
-  "errorMessage": "Request failed with status code 401",
-  "lastUpdated": "2025-05-15T15:19:04.514Z",
+  "errorMessage": "Missing required environment variables. Make sure WHOOP_CLIENT_ID, WHOOP_CLIENT_SECRET, and WHOOP_REFRESH_TOKEN are set in your GitHub secrets.",
+  "status": "API request failed",
+  "lastUpdated": "2025-05-15T19:02:18.835Z",
   "recovery": [],
   "sleep": [],
   "workout": [],
