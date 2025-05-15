@@ -4,91 +4,44 @@ const axios = require('axios');
 
 async function fetchWhoopData() {
   try {
+    console.log('Starting Whoop data fetching process...');
+    
+    // The current Whoop API uses a different base URL and endpoints
+    const API_BASE_URL = 'https://api.prod.whoop.com/developer/v1';
+    
+    // First, try to refresh the token
     console.log('Refreshing access token...');
     
-    // Create form data using URLSearchParams
-    const params = new URLSearchParams();
-    params.append('grant_type', 'refresh_token');
-    params.append('refresh_token', process.env.WHOOP_REFRESH_TOKEN);
-    params.append('client_id', process.env.WHOOP_CLIENT_ID);
-    params.append('client_secret', process.env.WHOOP_CLIENT_SECRET);
-    // Note: redirect_uri is typically NOT required for refresh token flow
+    const refreshParams = new URLSearchParams();
+    refreshParams.append('grant_type', 'refresh_token');
+    refreshParams.append('refresh_token', process.env.WHOOP_REFRESH_TOKEN);
+    refreshParams.append('client_id', process.env.WHOOP_CLIENT_ID);
+    refreshParams.append('client_secret', process.env.WHOOP_CLIENT_SECRET);
     
     // Log the parameters for debugging (without exposing secrets)
-    console.log('Parameters:', {
+    console.log('Parameters for refresh:', {
       grant_type: 'refresh_token',
       client_id: 'CLIENT_ID_PLACEHOLDER',
       client_secret: 'CLIENT_SECRET_PLACEHOLDER',
       refresh_token: 'REFRESH_TOKEN_PLACEHOLDER'
     });
-
-    // Make the token refresh request - use the correct endpoint
+    
+    // Make the token refresh request
     const tokenResponse = await axios({
       method: 'post',
       url: 'https://api.prod.whoop.com/oauth/token',
-      data: params.toString(),
+      data: refreshParams.toString(),
       headers: { 
         'Content-Type': 'application/x-www-form-urlencoded'
       }
     });
     
-    // Log success
     console.log('Token refresh successful');
     console.log('Response status:', tokenResponse.status);
-    
-    // Log token info without logging the actual token values
-    const tokenInfo = {
-      token_type: tokenResponse.data.token_type,
-      expires_in: tokenResponse.data.expires_in,
-      scope: tokenResponse.data.scope,
-      has_access_token: !!tokenResponse.data.access_token,
-      has_refresh_token: !!tokenResponse.data.refresh_token
-    };
-    
-    console.log('Token info:', JSON.stringify(tokenInfo, null, 2));
     
     // Get the new tokens
     const accessToken = tokenResponse.data.access_token;
     const newRefreshToken = tokenResponse.data.refresh_token;
-    
-    // Now that we have a valid token, let's fetch the actual Whoop data
-    console.log('Fetching Whoop data...');
-    
-    // Get recovery data
-    const recoveryResponse = await axios({
-      method: 'get',
-      url: 'https://api.prod.whoop.com/activities/recovery',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    
-    // Get sleep data
-    const sleepResponse = await axios({
-      method: 'get',
-      url: 'https://api.prod.whoop.com/activities/sleep',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    
-    // Get workout data
-    const workoutResponse = await axios({
-      method: 'get',
-      url: 'https://api.prod.whoop.com/activities/workout',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    
-    // Get cycle data
-    const cycleResponse = await axios({
-      method: 'get',
-      url: 'https://api.prod.whoop.com/activities/cycle',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
     
     // Create data directory if it doesn't exist
     const dataDir = path.join(__dirname, '..', 'data');
@@ -96,13 +49,73 @@ async function fetchWhoopData() {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     
+    // Calculate date ranges for queries
+    const now = new Date();
+    const twoWeeksAgo = new Date(now.getTime() - (14 * 24 * 60 * 60 * 1000));
+    const startDate = twoWeeksAgo.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+    const endDate = now.toISOString().split('T')[0];
+    
+    console.log(`Fetching data from ${startDate} to ${endDate}`);
+    
+    // Now use the developer API endpoints to fetch data
+    // Get user profile
+    const profileResponse = await axios({
+      method: 'get',
+      url: `${API_BASE_URL}/user/profile`,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    console.log('Successfully fetched user profile');
+    
+    // Get recovery collection data
+    const recoveryResponse = await axios({
+      method: 'get',
+      url: `${API_BASE_URL}/recovery/collection?start_date=${startDate}&end_date=${endDate}`,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    console.log('Successfully fetched recovery data');
+    
+    // Get sleep collection data
+    const sleepResponse = await axios({
+      method: 'get',
+      url: `${API_BASE_URL}/sleep/collection?start_date=${startDate}&end_date=${endDate}`,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    console.log('Successfully fetched sleep data');
+    
+    // Get workout collection data
+    const workoutResponse = await axios({
+      method: 'get',
+      url: `${API_BASE_URL}/workout/collection?start_date=${startDate}&end_date=${endDate}`,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    console.log('Successfully fetched workout data');
+    
+    // Get cycle collection data
+    const cycleResponse = await axios({
+      method: 'get',
+      url: `${API_BASE_URL}/cycle/collection?start_date=${startDate}&end_date=${endDate}`,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    console.log('Successfully fetched cycle data');
+    
     // Combine all data
     const combinedData = {
       lastUpdated: new Date().toISOString(),
-      recovery: recoveryResponse.data.records || [],
-      sleep: sleepResponse.data.records || [],
-      workout: workoutResponse.data.records || [],
-      cycle: cycleResponse.data.records || []
+      profile: profileResponse.data,
+      recovery: recoveryResponse.data,
+      sleep: sleepResponse.data,
+      workout: workoutResponse.data,
+      cycle: cycleResponse.data
     };
     
     // Write the data to file
@@ -113,14 +126,14 @@ async function fetchWhoopData() {
     
     console.log('Successfully fetched and saved Whoop data');
     
-    // If there's a new refresh token, log it for updating GitHub secrets
+    // If there's a new refresh token, log a message about updating GitHub secrets
     if (newRefreshToken && newRefreshToken !== process.env.WHOOP_REFRESH_TOKEN) {
       console.log('New refresh token received. Update your GitHub secret with this value.');
     }
     
     return 0;
   } catch (error) {
-    console.error('Error in token refresh:', error.message);
+    console.error('Error in main execution:', error.message);
     
     if (error.response) {
       console.error('Response status:', error.response.status);
@@ -142,11 +155,16 @@ async function fetchWhoopData() {
       fs.writeFileSync(path.join(dataDir, 'all-data.json'), JSON.stringify({
         error: true,
         errorMessage: error.message,
-        status: 'Token refresh failed',
-        lastUpdated: new Date().toISOString()
+        status: 'API request failed',
+        lastUpdated: new Date().toISOString(),
+        // Include sample structure for the dashboard
+        recovery: [],
+        sleep: [],
+        workout: [],
+        cycle: []
       }, null, 2));
       
-      console.log('Error info file created');
+      console.log('Created data file with error information');
     } catch (fsError) {
       console.error('Failed to create data file:', fsError.message);
     }
