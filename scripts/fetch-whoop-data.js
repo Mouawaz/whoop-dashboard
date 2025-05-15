@@ -1,25 +1,41 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const querystring = require('querystring');
 
 async function fetchWhoopData() {
   try {
     // Get new access token using refresh token
     console.log('Refreshing access token...');
     
-    // Create form data for token refresh - use URLSearchParams for proper format
-    const params = new URLSearchParams();
-    params.append('grant_type', 'refresh_token');
-    params.append('refresh_token', process.env.WHOOP_REFRESH_TOKEN);
-    params.append('client_id', process.env.WHOOP_CLIENT_ID);
-    params.append('client_secret', process.env.WHOOP_CLIENT_SECRET);
-    
-    // Use the same token endpoint that worked for you before
-    const tokenResponse = await axios.post('https://api.prod.whoop.com/oauth/oauth2/token', params, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
+    // Use querystring to properly format the request body
+    const requestBody = querystring.stringify({
+      grant_type: 'refresh_token',
+      refresh_token: process.env.WHOOP_REFRESH_TOKEN,
+      client_id: process.env.WHOOP_CLIENT_ID,
+      client_secret: process.env.WHOOP_CLIENT_SECRET
     });
+    
+    // Make the token refresh request
+    const tokenResponse = await axios.post(
+      'https://api.prod.whoop.com/oauth/oauth2/token', 
+      requestBody,
+      { 
+        headers: { 
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': requestBody.length
+        } 
+      }
+    );
+
+    // Log the entire token response for debugging
+    console.log('Token response received:', JSON.stringify({
+      tokenType: tokenResponse.data.token_type,
+      expiresIn: tokenResponse.data.expires_in,
+      scope: tokenResponse.data.scope,
+      hasAccessToken: !!tokenResponse.data.access_token,
+      hasRefreshToken: !!tokenResponse.data.refresh_token
+    }));
 
     const accessToken = tokenResponse.data.access_token;
     // Save the new refresh token for next time
@@ -79,14 +95,18 @@ async function fetchWhoopData() {
     }
   } catch (error) {
     console.error('Error fetching Whoop data:', error.message);
+    
+    // Detailed error logging
     if (error.response) {
       console.error('Response status:', error.response.status);
+      console.error('Response headers:', JSON.stringify(error.response.headers));
       console.error('Response data:', JSON.stringify(error.response.data, null, 2));
     } else if (error.request) {
       console.error('No response received:', error.request);
     } else {
       console.error('Error details:', error);
     }
+    
     process.exit(1);
   }
 }
