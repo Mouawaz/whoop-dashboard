@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whoop OAuth Callback</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      background-color: #f7f7f7;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .container {
+      background-color: white;
+      border-radius: 8px;
+      padding: 20px;
+      max-width: 500px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .code-display {
+      background-color: #f0f0f0;
+      padding: 10px;
+      border-radius: 4px;
+      font-family: monospace;
+      word-break: break-all;
+      margin: 10px 0;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Authorization Successful!</h1>
+    <div id="message">
+      <p>We received the authorization code from Whoop:</p>
+      <div class="code-display" id="auth-code"></div>
+      
+      <p>Now you need to exchange this code for access and refresh tokens. Run the following in your terminal:</p>
+      <div class="code-display" id="curl-command"></div>
+      
+      <p>Copy the refresh token from the response and add it to your GitHub repository secrets as WHOOP_REFRESH_TOKEN.</p>
+      
+      <button id="copy-button">Copy cURL Command</button>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Extract the authorization code from the URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      
+      if (code) {
+        document.getElementById('auth-code').textContent = code;
+        
+        // Create the curl command to exchange the code for tokens
+        const clientId = 'YOUR_CLIENT_ID'; // Replace with your actual client ID
+        
+        const curlCommand = `curl -X POST https://api.whoop.com/oauth/token \\
+  -H "Content-Type: application/x-www-form-urlencoded" \\
+  -d "client_id=${clientId}" \\
+  -d "client_secret=YOUR_CLIENT_SECRET" \\
+  -d "grant_type=authorization_code" \\
+  -d "code=${code}" \\
+  -d "redirect_uri=https://yourusername.github.io/whoop-dashboard/callback.html"`;
+        
+        document.getElementById('curl-command').textContent = curlCommand;
+        
+        // Copy functionality
+        document.getElementById('copy-button').addEventListener('click', function() {
+          navigator.clipboard.writeText(curlCommand).then(function() {
+            this.textContent = 'Copied!';
+            setTimeout(() => {
+              this.textContent = 'Copy cURL Command';
+            }, 2000);
+          }.bind(this));
+        });
+      } else {
+        document.getElementById('message').innerHTML = '<p>Error: No authorization code found in the URL.</p>';
+      }
+    });
+  </script>
+</body>
+</html>
