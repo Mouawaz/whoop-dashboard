@@ -1,130 +1,168 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const crypto = require('crypto');
 
-// File to store the access token passport data
-const TOKEN_FILE_PATH = path.join(__dirname, '..', 'config', 'whoop-token.json');
-
-// Function to read token passport from file
-function readTokenPassport() {
-  try {
-    if (fs.existsSync(TOKEN_FILE_PATH)) {
-      const data = fs.readFileSync(TOKEN_FILE_PATH, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error reading token file:', error);
-  }
-  return null;
-}
-
-// Function to save token passport to file
-function saveTokenPassport(tokenData) {
-  try {
-    // Create config directory if it doesn't exist
-    const configDir = path.dirname(TOKEN_FILE_PATH);
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
-    }
-    fs.writeFileSync(TOKEN_FILE_PATH, JSON.stringify(tokenData, null, 2));
-    console.log('Token passport saved successfully');
-  } catch (error) {
-    console.error('Error saving token passport:', error);
-  }
-}
-
-// Function to exchange authorization code for access token
-async function exchangeCodeForToken(authorizationCode) {
-  try {
-    const response = await axios({
-      method: 'post',
-      url: 'https://api.prod.whoop.com/oauth/oauth2/token',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      data: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: authorizationCode,
-        redirect_uri: 'http://localhost:3000/callback' // Update with your redirect URI
-      })
-    });
-
-    const tokenData = response.data;
-    tokenData.created_at = Date.now();
-    saveTokenPassport(tokenData);
-    return tokenData;
-  } catch (error) {
-    console.error('Error exchanging code for token:', error);
-    throw error;
-  }
-}
-
-// Function to refresh the access token
-async function refreshAccessToken(refreshToken) {
-  try {
-    const response = await axios({
-      method: 'post',
-      url: 'https://api.prod.whoop.com/oauth/oauth2/token',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      data: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken
-      })
-    });
-
-    const tokenData = response.data;
-    tokenData.created_at = Date.now();
-    saveTokenPassport(tokenData);
-    return tokenData;
-  } catch (error) {
-    console.error('Error refreshing token:', error);
-    throw error;
-  }
-}
-
-// Function to get a valid access token
-async function getValidAccessToken() {
-  let tokenData = readTokenPassport();
-
-  if (!tokenData) {
-    console.log('No token passport found. Please provide an authorization code:');
-    throw new Error('Authorization code required. Please follow the WHOOP authorization flow first.');
+// Create a dedicated class for managing the Access Token Passport
+class WhoopPassport {
+  constructor(passportFilePath) {
+    this.passportFilePath = passportFilePath || path.join(__dirname, 'whoop-passport.json');
+    this.passport = null;
+    this.API_BASE_URL = 'https://api.prod.whoop.com/developer/v1';
   }
 
-  // Check if token is expired (considering 5 minute buffer)
-  const now = Date.now();
-  const expiresAt = tokenData.created_at + (tokenData.expires_in * 1000) - (5 * 60 * 1000);
-
-  if (now > expiresAt) {
-    console.log('Token expired, refreshing...');
+  // Read the passport from file
+  readPassport() {
     try {
-      tokenData = await refreshAccessToken(tokenData.refresh_token);
+      if (fs.existsSync(this.passportFilePath)) {
+        const data = fs.readFileSync(this.passportFilePath, 'utf8');
+        this.passport = JSON.parse(data);
+        return this.passport;
+      }
     } catch (error) {
-      console.error('Failed to refresh token. You may need to re-authenticate.');
+      console.error('Error reading passport file:', error.message);
+    }
+    return null;
+  }
+
+  // Save the passport to file
+  savePassport() {
+    try {
+      const dirPath = path.dirname(this.passportFilePath);
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+      fs.writeFileSync(this.passportFilePath, JSON.stringify(this.passport, null, 2));
+      console.log('Passport saved successfully');
+    } catch (error) {
+      console.error('Error saving passport:', error.message);
       throw error;
     }
   }
 
-  return tokenData.access_token;
-}
+  // Create a new passport from tokens (initial setup or after manual refresh)
+  createPassport(accessToken, refreshToken, expiresIn) {
+    const now = Math.floor(Date.now() / 1000);
+    
+    this.passport = {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      created_at: now,
+      expires_at: now + expiresIn,
+      passport_id: crypto.randomUUID()
+    };
+    
+    this.savePassport();
+    return this.passport;
+  }
 
-// Main function to fetch WHOOP data
-async function fetchWhoopData(authorizationCode = null) {
-  try {
-    console.log('Starting Whoop data fetching process...');
+  // Check if token needs refreshing (with 5 minute buffer)
+  needsRefresh() {
+    if (!this.passport) return true;
+    
+    const now = Math.floor(Date.now() / 1000);
+    // Add 5 minute buffer before expiration
+    return now >= (this.passport.expires_at - 300);
+  }
 
-    // If authorization code is provided, exchange it for token
-    if (authorizationCode) {
-      await exchangeCodeForToken(authorizationCode);
+  // Refresh the access token
+  async refreshAccessToken() {
+    try {
+      console.log('Refreshing access token...');
+      
+      const response = await axios({
+        method: 'post',
+        url: 'https://api.prod.whoop.com/oauth/oauth2/token',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        data: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: this.passport.refresh_token
+        })
+      });
+
+      const now = Math.floor(Date.now() / 1000);
+      
+      this.passport = {
+        ...this.passport,
+        access_token: response.data.access_token,
+        refresh_token: response.data.refresh_token || this.passport.refresh_token,
+        created_at: now,
+        expires_at: now + response.data.expires_in
+      };
+      
+      this.savePassport();
+      console.log('Access token refreshed successfully');
+      return this.passport;
+    } catch (error) {
+      console.error('Error refreshing token:', error.message);
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+      }
+      throw new Error('Failed to refresh token. You may need to re-create your passport.');
+    }
+  }
+
+  // Get a valid access token (refresh if needed)
+  async getValidAccessToken() {
+    // Read the passport if not loaded yet
+    if (!this.passport) {
+      this.passport = this.readPassport();
     }
 
-    // Get valid access token
-    const accessToken = await getValidAccessToken();
+    // Check if we have a passport and if it needs refreshing
+    if (!this.passport) {
+      throw new Error('No passport found. Create a passport first with createPassport().');
+    }
+
+    if (this.needsRefresh()) {
+      await this.refreshAccessToken();
+    }
+
+    return this.passport.access_token;
+  }
+
+  // Make an authenticated API request
+  async apiRequest(method, endpoint, data = null) {
+    try {
+      const accessToken = await this.getValidAccessToken();
+      
+      const config = {
+        method,
+        url: `${this.API_BASE_URL}${endpoint}`,
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      };
+      
+      if (data) {
+        config.data = data;
+      }
+      
+      const response = await axios(config);
+      return response.data;
+    } catch (error) {
+      console.error(`API request failed: ${method} ${endpoint}`);
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+      } else {
+        console.error('Error details:', error.message);
+      }
+      throw error;
+    }
+  }
+}
+
+// Main function to fetch WHOOP data using the passport
+async function fetchWhoopData() {
+  try {
+    console.log('Starting Whoop data fetching process...');
     
-    // Using the exact API base URL and endpoints from the documentation
-    const API_BASE_URL = 'https://api.prod.whoop.com/developer/v1';
+    // Initialize the passport manager
+    const passportManager = new WhoopPassport();
     
     // Create data directory if it doesn't exist
     const dataDir = path.join(__dirname, '..', 'data');
@@ -132,64 +170,37 @@ async function fetchWhoopData(authorizationCode = null) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     
-    // Following the exact approach from the documentation
+    // Step 1: Get the current cycle collection
     console.log('Step 1: Getting the current cycle collection (limit=1)...');
+    const cycleResponse = await passportManager.apiRequest('get', '/cycle/collection?limit=1');
     
-    // Get the current cycle (most recent) - using limit=1 as documentation suggests
-    const cycleResponse = await axios({
-      method: 'get',
-      url: `${API_BASE_URL}/cycle/collection?limit=1`,
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    
-    if (!cycleResponse.data || cycleResponse.data.length === 0) {
+    if (!cycleResponse || cycleResponse.length === 0) {
       throw new Error('No cycle data returned from API');
     }
     
-    const currentCycle = cycleResponse.data[0];
+    const currentCycle = cycleResponse[0];
     console.log(`Current cycle found: ID ${currentCycle.id}`);
     
     // Step 2: Get recovery for this cycle
     console.log(`Step 2: Getting recovery for cycle ${currentCycle.id}...`);
-    const recoveryResponse = await axios({
-      method: 'get',
-      url: `${API_BASE_URL}/cycle/${currentCycle.id}/recovery`,
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    
+    const recoveryResponse = await passportManager.apiRequest('get', `/cycle/${currentCycle.id}/recovery`);
     console.log('Successfully fetched recovery data!');
     
     // Get more cycles for historical data
     console.log('Fetching more cycles for historical data...');
-    const allCyclesResponse = await axios({
-      method: 'get',
-      url: `${API_BASE_URL}/cycle/collection?limit=14`,
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
+    const allCyclesResponse = await passportManager.apiRequest('get', '/cycle/collection?limit=14');
     
     // Process all cycles to get their recovery data
     console.log('Fetching recovery data for all cycles...');
     const recoveries = [];
     
-    for (const cycle of allCyclesResponse.data) {
+    for (const cycle of allCyclesResponse) {
       try {
-        const cycleRecoveryResponse = await axios({
-          method: 'get',
-          url: `${API_BASE_URL}/cycle/${cycle.id}/recovery`,
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
+        const cycleRecoveryResponse = await passportManager.apiRequest('get', `/cycle/${cycle.id}/recovery`);
         
-        if (cycleRecoveryResponse.data) {
+        if (cycleRecoveryResponse) {
           recoveries.push({
-            ...cycleRecoveryResponse.data,
+            ...cycleRecoveryResponse,
             timestamp: cycle.start // Use cycle start time for timestamp
           });
           console.log(`Recovery data fetched for cycle ${cycle.id}`);
@@ -202,23 +213,11 @@ async function fetchWhoopData(authorizationCode = null) {
     
     // Get sleep data 
     console.log('Fetching sleep collection...');
-    const sleepResponse = await axios({
-      method: 'get',
-      url: `${API_BASE_URL}/sleep/collection?limit=14`,
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
+    const sleepResponse = await passportManager.apiRequest('get', '/sleep/collection?limit=14');
     
     // Get workout data
     console.log('Fetching workout collection...');
-    const workoutResponse = await axios({
-      method: 'get',
-      url: `${API_BASE_URL}/workout/collection?limit=14`,
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
+    const workoutResponse = await passportManager.apiRequest('get', '/workout/collection?limit=14');
     
     // Format data for dashboard compatibility
     const formattedRecoveries = recoveries.map(recovery => ({
@@ -228,31 +227,24 @@ async function fetchWhoopData(authorizationCode = null) {
       heartRateVariability: recovery.score ? recovery.score.heart_rate_variability_ms : 0
     }));
     
-    const formattedSleep = sleepResponse.data.map(sleep => ({
+    const formattedSleep = sleepResponse.map(sleep => ({
       timestamp: sleep.end, // use end time as timestamp
       score: sleep.score ? sleep.score.sleep_performance_percentage : 0,
       durationInSeconds: sleep.score ? sleep.score.total_sleep_time_milli / 1000 : 0
     }));
     
-    const formattedWorkouts = workoutResponse.data.map(workout => ({
+    const formattedWorkouts = workoutResponse.map(workout => ({
       timestamp: workout.end, // use end time as timestamp
       strain: workout.score ? workout.score.strain : 0,
       caloriesBurned: workout.score ? workout.score.kilojoule * 0.239 : 0, // convert kj to kcal
       activityType: workout.sport_id || "Unknown"
     }));
     
-    // Fetch user profile at the end
+    // Fetch user profile
     let profileData = {};
     try {
       console.log('Fetching user profile data...');
-      const profileResponse = await axios({
-        method: 'get',
-        url: `${API_BASE_URL}/user/profile`,
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
-      profileData = profileResponse.data;
+      profileData = await passportManager.apiRequest('get', '/user/profile');
     } catch (error) {
       console.log('Could not fetch profile data, using placeholder');
       profileData = {
@@ -268,7 +260,7 @@ async function fetchWhoopData(authorizationCode = null) {
       recovery: formattedRecoveries,
       sleep: formattedSleep.length ? formattedSleep : [],
       workout: formattedWorkouts.length ? formattedWorkouts : [],
-      cycle: allCyclesResponse.data
+      cycle: allCyclesResponse
     };
     
     // Write the data to file
@@ -297,85 +289,82 @@ async function fetchWhoopData(authorizationCode = null) {
       console.error('Error details:', error);
     }
     
-    // If API fails, generate sample data as fallback
-    try {
-      console.log('Generating sample data as fallback...');
-      
-      const dataDir = path.join(__dirname, '..', 'data');
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
-      
-      // Generate dates for the past 14 days
-      const now = new Date();
-      const dates = [];
-      for (let i = 0; i < 14; i++) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - i);
-        dates.push(date.toISOString());
-      }
-      
-      // Generate sample recovery data
-      const recoveries = dates.map(date => ({
-        timestamp: date,
-        score: Math.floor(Math.random() * 40) + 60, // 60-99
-        restingHeartRate: Math.floor(Math.random() * 15) + 50, // 50-64
-        heartRateVariability: Math.floor(Math.random() * 30) + 40 // 40-69
-      }));
-      
-      // Generate sample sleep data
-      const sleeps = dates.map(date => ({
-        timestamp: date,
-        score: Math.floor(Math.random() * 30) + 70, // 70-99
-        durationInSeconds: (Math.floor(Math.random() * 3) + 6) * 3600 // 6-8 hours
-      }));
-      
-      // Generate sample workout data
-      const workouts = dates.slice(0, 10).map(date => ({
-        timestamp: date,
-        strain: Math.floor(Math.random() * 10) + 5, // 5-14
-        caloriesBurned: Math.floor(Math.random() * 400) + 200, // 200-599
-        activityType: ["Running", "Cycling", "Swimming", "HIIT", "Yoga"][Math.floor(Math.random() * 5)]
-      }));
-      
-      // Combine all data
-      const sampleData = {
-        lastUpdated: new Date().toISOString(),
-        profile: {
-          firstName: "Sample",
-          lastName: "User",
-          email: "sample.user@example.com"
-        },
-        recovery: recoveries,
-        sleep: sleeps,
-        workout: workouts,
-        cycle: dates.map(date => ({ timestamp: date }))
-      };
-      
-      // Write the sample data to file
-      fs.writeFileSync(
-        path.join(dataDir, 'all-data.json'), 
-        JSON.stringify(sampleData, null, 2)
-      );
-      
-      console.log('Sample data generated successfully as fallback!');
-    } catch (sampleDataError) {
-      console.error('Error generating sample data:', sampleDataError);
-    }
+    // Generate sample data as fallback
+    generateSampleData();
     
     process.exit(1);
   }
 }
 
-// Export the function for use in other modules
-module.exports = { fetchWhoopData };
+// Function to generate sample data when API fails
+function generateSampleData() {
+  try {
+    console.log('Generating sample data as fallback...');
+    
+    const dataDir = path.join(__dirname, '..', 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    
+    // Generate dates for the past 14 days
+    const now = new Date();
+    const dates = [];
+    for (let i = 0; i < 14; i++) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      dates.push(date.toISOString());
+    }
+    
+    // Generate sample data for each category
+    const recoveries = dates.map(date => ({
+      timestamp: date,
+      score: Math.floor(Math.random() * 40) + 60, // 60-99
+      restingHeartRate: Math.floor(Math.random() * 15) + 50, // 50-64
+      heartRateVariability: Math.floor(Math.random() * 30) + 40 // 40-69
+    }));
+    
+    const sleeps = dates.map(date => ({
+      timestamp: date,
+      score: Math.floor(Math.random() * 30) + 70, // 70-99
+      durationInSeconds: (Math.floor(Math.random() * 3) + 6) * 3600 // 6-8 hours
+    }));
+    
+    const workouts = dates.slice(0, 10).map(date => ({
+      timestamp: date,
+      strain: Math.floor(Math.random() * 10) + 5, // 5-14
+      caloriesBurned: Math.floor(Math.random() * 400) + 200, // 200-599
+      activityType: ["Running", "Cycling", "Swimming", "HIIT", "Yoga"][Math.floor(Math.random() * 5)]
+    }));
+    
+    // Combine all data
+    const sampleData = {
+      lastUpdated: new Date().toISOString(),
+      profile: {
+        firstName: "Sample",
+        lastName: "User",
+        email: "sample.user@example.com"
+      },
+      recovery: recoveries,
+      sleep: sleeps,
+      workout: workouts,
+      cycle: dates.map(date => ({ timestamp: date }))
+    };
+    
+    // Write the sample data to file
+    fs.writeFileSync(
+      path.join(dataDir, 'all-data.json'), 
+      JSON.stringify(sampleData, null, 2)
+    );
+    
+    console.log('Sample data generated successfully as fallback!');
+  } catch (error) {
+    console.error('Error generating sample data:', error);
+  }
+}
 
-// If this file is run directly, execute the function
+// Execute the function when this file is run directly
 if (require.main === module) {
-  // Check if authorization code is provided as command line argument
-  const authCode = process.argv[2];
-  
-  fetchWhoopData(authCode)
+  fetchWhoopData()
     .then(exitCode => {
       console.log(`Script completed with exit code: ${exitCode}`);
       process.exit(exitCode);
@@ -385,3 +374,9 @@ if (require.main === module) {
       process.exit(1);
     });
 }
+
+// Export functions for use in other modules
+module.exports = {
+  WhoopPassport,
+  fetchWhoopData
+};

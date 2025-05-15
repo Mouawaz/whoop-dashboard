@@ -19,6 +19,10 @@ async function fetchWhoopData() {
     // Get a fresh access token using the refresh token
     const tokens = await getAccessToken(clientId, clientSecret, refreshToken);
     const accessToken = tokens.access_token;
+    const newRefreshToken = tokens.refresh_token;
+    
+    // Log token expiration info
+    console.log(`Access token will expire in ${tokens.expires_in} seconds`);
     
     // API base URL
     const API_BASE_URL = 'https://api.prod.whoop.com/developer/v1';
@@ -41,29 +45,30 @@ async function fetchWhoopData() {
     console.log('Fetching user profile...');
     const profileResponse = await axios({
       method: 'get',
-      url: `${API_BASE_URL}/user/profile`,
+      url: `${API_BASE_URL}/user/profile/basic`,
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
     });
     console.log('Profile fetched successfully');
     
-    // Get the current cycle (most recent)
+    // Get the current cycles (most recent)
     console.log('Fetching most recent cycles...');
     const cycleResponse = await axios({
       method: 'get',
-      url: `${API_BASE_URL}/cycle/collection?limit=14`,
+      url: `${API_BASE_URL}/cycle/collection`,
+      params: { limit: 14 },
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
     });
-    console.log(`Fetched ${cycleResponse.data.length} cycles`);
+    console.log(`Fetched ${cycleResponse.data.records.length} cycles`);
     
     // Now get recoveries for each cycle
     console.log('Fetching recovery data for each cycle...');
     const recoveries = [];
     
-    for (const cycle of cycleResponse.data) {
+    for (const cycle of cycleResponse.data.records) {
       try {
         const recoveryResponse = await axios({
           method: 'get',
@@ -90,39 +95,47 @@ async function fetchWhoopData() {
     console.log('Fetching sleep data...');
     const sleepResponse = await axios({
       method: 'get',
-      url: `${API_BASE_URL}/sleep/collection?start_date=${startDate}&end_date=${endDate}`,
+      url: `${API_BASE_URL}/sleep/collection`,
+      params: { 
+        start_date: startDate,
+        end_date: endDate
+      },
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
     });
-    console.log(`Fetched ${sleepResponse.data.length} sleep records`);
+    console.log(`Fetched ${sleepResponse.data.records.length} sleep records`);
     
     // Get workout data
     console.log('Fetching workout data...');
     const workoutResponse = await axios({
       method: 'get',
-      url: `${API_BASE_URL}/workout/collection?start_date=${startDate}&end_date=${endDate}`,
+      url: `${API_BASE_URL}/workout/collection`,
+      params: { 
+        start_date: startDate,
+        end_date: endDate
+      },
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
     });
-    console.log(`Fetched ${workoutResponse.data.length} workout records`);
+    console.log(`Fetched ${workoutResponse.data.records.length} workout records`);
     
     // Format data for dashboard compatibility
     const formattedRecoveries = recoveries.map(recovery => ({
       timestamp: recovery.timestamp,
       score: recovery.score ? recovery.score.recovery_score : 0,
       restingHeartRate: recovery.score ? recovery.score.resting_heart_rate : 0,
-      heartRateVariability: recovery.score ? recovery.score.heart_rate_variability_ms : 0
+      heartRateVariability: recovery.score ? recovery.score.hrv_rmssd_milli : 0
     }));
     
-    const formattedSleep = sleepResponse.data.map(sleep => ({
+    const formattedSleep = sleepResponse.data.records.map(sleep => ({
       timestamp: sleep.end, // use end time as timestamp
       score: sleep.score ? sleep.score.sleep_performance_percentage : 0,
       durationInSeconds: sleep.score ? sleep.score.total_sleep_time_milli / 1000 : 0
     }));
     
-    const formattedWorkouts = workoutResponse.data.map(workout => ({
+    const formattedWorkouts = workoutResponse.data.records.map(workout => ({
       timestamp: workout.end, // use end time as timestamp
       strain: workout.score ? workout.score.strain : 0,
       caloriesBurned: workout.score ? workout.score.kilojoule * 0.239 : 0, // convert kj to kcal
@@ -136,7 +149,7 @@ async function fetchWhoopData() {
       recovery: formattedRecoveries,
       sleep: formattedSleep,
       workout: formattedWorkouts,
-      cycle: cycleResponse.data
+      cycle: cycleResponse.data.records
     };
     
     // Write the data to file
@@ -145,9 +158,8 @@ async function fetchWhoopData() {
       JSON.stringify(combinedData, null, 2)
     );
     
-    // If we got a new refresh token, we should update it in GitHub secrets
-    // This requires additional setup and is not implemented here
-    if (tokens.refresh_token && tokens.refresh_token !== refreshToken) {
+    // If we got a new refresh token, we should log it
+    if (newRefreshToken && newRefreshToken !== refreshToken) {
       console.log('New refresh token received. You should update your GitHub secret WHOOP_REFRESH_TOKEN with this value.');
       console.log('For security reasons, the token is not printed here.');
     }
