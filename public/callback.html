@@ -43,40 +43,69 @@
     button:hover {
       background-color: #45a049;
     }
+    .error {
+      color: #e53935;
+      background-color: #ffebee;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Authorization Successful!</h1>
+    <h1>Authorization Callback</h1>
     <div id="message">
-      <p>We received the authorization code from Whoop:</p>
-      <div class="code-display" id="auth-code"></div>
-      
-      <p>Now you need to exchange this code for access and refresh tokens. Run the following in your terminal:</p>
-      <div class="code-display" id="curl-command"></div>
-      
-      <p>Copy the refresh token from the response and add it to your GitHub repository secrets as WHOOP_REFRESH_TOKEN.</p>
-      
-      <button id="copy-button">Copy cURL Command</button>
+      <div id="loading">Loading...</div>
     </div>
   </div>
 
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      // Extract the authorization code from the URL
+      const messageDiv = document.getElementById('message');
       const urlParams = new URLSearchParams(window.location.search);
+      
+      // Check for errors first
+      if (urlParams.has('error')) {
+        const error = urlParams.get('error');
+        const errorDescription = urlParams.get('error_description');
+        const errorHint = urlParams.get('error_hint');
+        
+        messageDiv.innerHTML = `
+          <div class="error">
+            <h3>Error: ${error}</h3>
+            <p>${errorDescription}</p>
+            ${errorHint ? `<p>Hint: ${errorHint}</p>` : ''}
+          </div>
+          <p>Please try again with the correct scopes. Make sure your app is configured correctly in the Whoop Developer Dashboard.</p>
+          <p>The correct URL should use these scopes: <code>read:recovery read:cycles read:sleep read:workout read:profile</code></p>
+        `;
+        return;
+      }
+      
+      // Now check for code
       const code = urlParams.get('code');
       
       if (code) {
-        document.getElementById('auth-code').textContent = code;
+        messageDiv.innerHTML = `
+          <p>We received the authorization code from Whoop:</p>
+          <div class="code-display" id="auth-code">${code}</div>
+          
+          <p>Now you need to exchange this code for access and refresh tokens. Run the following in your terminal:</p>
+          <div class="code-display" id="curl-command"></div>
+          
+          <p>Copy the refresh token from the response and add it to your GitHub repository secrets as WHOOP_REFRESH_TOKEN.</p>
+          
+          <button id="copy-button">Copy cURL Command</button>
+        `;
         
         // Create the curl command to exchange the code for tokens
-        const clientId = 'YOUR_CLIENT_ID'; // Replace with your actual client ID
+        const clientId = '9d334263-1e8f-4b33-8510-2c138662257c'; // Replace with your actual client ID
         
-        const curlCommand = `curl -X POST https://api.whoop.com/oauth/token \\
+        const curlCommand = `curl -X POST https://api.prod.whoop.com/oauth/token \\
   -H "Content-Type: application/x-www-form-urlencoded" \\
   -d "client_id=${clientId}" \\
-  -d "client_secret=YOUR_CLIENT_SECRET" \\
+  -d "client_secret=a293ef5d413af5c975f5bb132bf7d7d003a67d7b48c48f7293d2f7d8c64c9d79" \\
   -d "grant_type=authorization_code" \\
   -d "code=${code}" \\
   -d "redirect_uri=https://mouawaz.github.io/whoop-dashboard/callback.html"`;
@@ -93,7 +122,7 @@
           }.bind(this));
         });
       } else {
-        document.getElementById('message').innerHTML = '<p>Error: No authorization code found in the URL.</p>';
+        messageDiv.innerHTML = '<p class="error">Error: No authorization code found in the URL.</p>';
       }
     });
   </script>

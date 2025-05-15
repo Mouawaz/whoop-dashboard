@@ -5,7 +5,7 @@ const axios = require('axios');
 async function fetchWhoopData() {
   try {
     // Get new access token using refresh token
-    const tokenResponse = await axios.post('https://api.whoop.com/oauth/token', {
+    const tokenResponse = await axios.post('https://api.prod.whoop.com/oauth/token', {
       grant_type: 'refresh_token',
       refresh_token: process.env.WHOOP_REFRESH_TOKEN,
       client_id: process.env.WHOOP_CLIENT_ID,
@@ -22,16 +22,16 @@ async function fetchWhoopData() {
     };
 
     // Get recovery data
-    const recoveryResponse = await axios.get('https://api.whoop.com/v1/cycle/recovery', { headers });
+    const recoveryResponse = await axios.get('https://api.prod.whoop.com/v1/cycle/recovery', { headers });
     
-    // Get cycle data
-    const cycleResponse = await axios.get('https://api.whoop.com/v1/cycle', { headers });
+    // Get cycle data - note this is the correct endpoint for cycles
+    const cycleResponse = await axios.get('https://api.prod.whoop.com/v1/cycles', { headers });
     
     // Get sleep data
-    const sleepResponse = await axios.get('https://api.whoop.com/v1/cycle/sleep', { headers });
+    const sleepResponse = await axios.get('https://api.prod.whoop.com/v1/cycle/sleep', { headers });
     
     // Get workout data
-    const workoutResponse = await axios.get('https://api.whoop.com/v1/cycle/workout', { headers });
+    const workoutResponse = await axios.get('https://api.prod.whoop.com/v1/cycle/workout', { headers });
 
     // Ensure data directory exists
     const dataDir = path.join(__dirname, '..', 'data');
