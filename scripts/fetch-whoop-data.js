@@ -1,3 +1,4 @@
+
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -25,7 +26,7 @@ async function fetchWhoopData() {
     console.log(`Access token will expire in ${tokens.expires_in} seconds`);
     
     // API base URL
-    const API_BASE_URL = 'https://api.prod.whoop.com/developer/v1';
+    const API_BASE_URL = 'https://api.prod.whoop.com/v1';
     
     // Create data directory if it doesn't exist
     const dataDir = path.join(__dirname, '..', 'data');
@@ -45,7 +46,7 @@ async function fetchWhoopData() {
     console.log('Fetching user profile...');
     const profileResponse = await axios({
       method: 'get',
-      url: `${API_BASE_URL}/user/profile/basic`,
+      url: `https://api.prod.whoop.com/v1/user`,
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -56,23 +57,26 @@ async function fetchWhoopData() {
     console.log('Fetching most recent cycles...');
     const cycleResponse = await axios({
       method: 'get',
-      url: `${API_BASE_URL}/cycle/collection`,
+      url: `https://api.prod.whoop.com/v1/cycle`,
       params: { limit: 14 },
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
     });
-    console.log(`Fetched ${cycleResponse.data.records.length} cycles`);
+    console.log(`Fetched ${cycleResponse.data.length || (cycleResponse.data.records && cycleResponse.data.records.length) || 0} cycles`);
     
     // Now get recoveries for each cycle
     console.log('Fetching recovery data for each cycle...');
     const recoveries = [];
     
-    for (const cycle of cycleResponse.data.records) {
+    const cycles = Array.isArray(cycleResponse.data) ? cycleResponse.data : 
+                  (cycleResponse.data.records ? cycleResponse.data.records : []);
+    
+    for (const cycle of cycles) {
       try {
         const recoveryResponse = await axios({
           method: 'get',
-          url: `${API_BASE_URL}/cycle/${cycle.id}/recovery`,
+          url: `https://api.prod.whoop.com/v1/recovery/${cycle.id}`,
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
@@ -95,51 +99,57 @@ async function fetchWhoopData() {
     console.log('Fetching sleep data...');
     const sleepResponse = await axios({
       method: 'get',
-      url: `${API_BASE_URL}/sleep/collection`,
+      url: `https://api.prod.whoop.com/v1/activity/sleep`,
       params: { 
-        start_date: startDate,
-        end_date: endDate
+        start: startDate,
+        end: endDate
       },
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
     });
-    console.log(`Fetched ${sleepResponse.data.records.length} sleep records`);
+    console.log(`Fetched ${sleepResponse.data.length || (sleepResponse.data.records && sleepResponse.data.records.length) || 0} sleep records`);
     
     // Get workout data
     console.log('Fetching workout data...');
     const workoutResponse = await axios({
       method: 'get',
-      url: `${API_BASE_URL}/workout/collection`,
+      url: `https://api.prod.whoop.com/v1/activity/workout`,
       params: { 
-        start_date: startDate,
-        end_date: endDate
+        start: startDate,
+        end: endDate
       },
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
     });
-    console.log(`Fetched ${workoutResponse.data.records.length} workout records`);
+    console.log(`Fetched ${workoutResponse.data.length || (workoutResponse.data.records && workoutResponse.data.records.length) || 0} workout records`);
     
     // Format data for dashboard compatibility
     const formattedRecoveries = recoveries.map(recovery => ({
       timestamp: recovery.timestamp,
-      score: recovery.score ? recovery.score.recovery_score : 0,
-      restingHeartRate: recovery.score ? recovery.score.resting_heart_rate : 0,
-      heartRateVariability: recovery.score ? recovery.score.hrv_rmssd_milli : 0
+      score: recovery.score || (recovery.data && recovery.data.score) || 0,
+      restingHeartRate: recovery.resting_heart_rate || (recovery.data && recovery.data.resting_heart_rate) || 0,
+      heartRateVariability: recovery.hrv || (recovery.data && recovery.data.hrv) || 0
     }));
     
-    const formattedSleep = sleepResponse.data.records.map(sleep => ({
-      timestamp: sleep.end, // use end time as timestamp
-      score: sleep.score ? sleep.score.sleep_performance_percentage : 0,
-      durationInSeconds: sleep.score ? sleep.score.total_sleep_time_milli / 1000 : 0
+    const sleepData = Array.isArray(sleepResponse.data) ? sleepResponse.data : 
+                     (sleepResponse.data.records ? sleepResponse.data.records : []);
+    
+    const formattedSleep = sleepData.map(sleep => ({
+      timestamp: sleep.end || sleep.created_at,
+      score: sleep.score || (sleep.data && sleep.data.score) || 0,
+      durationInSeconds: sleep.duration_seconds || (sleep.data && sleep.data.duration_seconds) || 0
     }));
     
-    const formattedWorkouts = workoutResponse.data.records.map(workout => ({
-      timestamp: workout.end, // use end time as timestamp
-      strain: workout.score ? workout.score.strain : 0,
-      caloriesBurned: workout.score ? workout.score.kilojoule * 0.239 : 0, // convert kj to kcal
-      activityType: workout.sport_id || "Unknown"
+    const workoutData = Array.isArray(workoutResponse.data) ? workoutResponse.data : 
+                       (workoutResponse.data.records ? workoutResponse.data.records : []);
+    
+    const formattedWorkouts = workoutData.map(workout => ({
+      timestamp: workout.end || workout.created_at,
+      strain: workout.strain || (workout.data && workout.data.strain) || 0,
+      caloriesBurned: workout.calories || (workout.data && workout.data.calories) || 0,
+      activityType: workout.sport_id || workout.type || "Unknown"
     }));
     
     // Combine all data in the format expected by the dashboard
@@ -149,7 +159,7 @@ async function fetchWhoopData() {
       recovery: formattedRecoveries,
       sleep: formattedSleep,
       workout: formattedWorkouts,
-      cycle: cycleResponse.data.records
+      cycle: cycles
     };
     
     // Write the data to file

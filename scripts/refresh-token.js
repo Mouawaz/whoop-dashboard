@@ -54,7 +54,3 @@ async function getAccessToken(clientId, clientSecret, refreshToken) {
     throw error;
   }
 }
-
-module.exports = {
-  getAccessToken
-};

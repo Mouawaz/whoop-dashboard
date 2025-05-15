@@ -6,7 +6,7 @@ const readline = require('readline');
  */
 function generateAuthUrl() {
   // Get the client ID from environment or prompt for it
-  let clientId = "9d334263-1e8f-4b33-8510-2c138662257c";
+  let clientId = process.env.WHOOP_CLIENT_ID;
   
   if (!clientId) {
     console.error('\nERROR: WHOOP_CLIENT_ID environment variable is required.');
