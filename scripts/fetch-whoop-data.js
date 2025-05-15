@@ -4,33 +4,33 @@ const axios = require('axios');
 
 async function fetchWhoopData() {
   try {
-    // Get new access token using refresh token
-    const tokenResponse = await axios.post('https://api.prod.whoop.com/oauth/token', {
-      grant_type: 'refresh_token',
-      refresh_token: process.env.WHOOP_REFRESH_TOKEN,
-      client_id: process.env.WHOOP_CLIENT_ID,
-      client_secret: process.env.WHOOP_CLIENT_SECRET
-    });
-
-    const accessToken = tokenResponse.data.access_token;
-    // Save the new refresh token for next time
-    const newRefreshToken = tokenResponse.data.refresh_token;
+    // Use the access token directly from environment variable
+    const accessToken = process.env.WHOOP_ACCESS_TOKEN;
     
-    // Now use the access token to fetch data
+    // Verify we have an access token
+    if (!accessToken) {
+      throw new Error('No access token found. Please set the WHOOP_ACCESS_TOKEN environment variable.');
+    }
+    
+    // Use the access token to fetch data
     const headers = {
       'Authorization': `Bearer ${accessToken}`
     };
 
     // Get recovery data
+    console.log('Fetching recovery data...');
     const recoveryResponse = await axios.get('https://api.prod.whoop.com/v1/cycle/recovery', { headers });
     
-    // Get cycle data - note this is the correct endpoint for cycles
+    // Get cycle data
+    console.log('Fetching cycles data...');
     const cycleResponse = await axios.get('https://api.prod.whoop.com/v1/cycles', { headers });
     
     // Get sleep data
+    console.log('Fetching sleep data...');
     const sleepResponse = await axios.get('https://api.prod.whoop.com/v1/cycle/sleep', { headers });
     
     // Get workout data
+    console.log('Fetching workout data...');
     const workoutResponse = await axios.get('https://api.prod.whoop.com/v1/cycle/workout', { headers });
 
     // Ensure data directory exists
@@ -55,13 +55,15 @@ async function fetchWhoopData() {
     }, null, 2));
     
     console.log('Data updated successfully');
-    
-    // Store the new refresh token in GitHub Actions secrets (this requires manual intervention)
-    console.log('New refresh token:', newRefreshToken);
   } catch (error) {
     console.error('Error fetching Whoop data:', error.message);
     if (error.response) {
       console.error('Response data:', error.response.data);
+      
+      // Check if the error is due to an expired token
+      if (error.response.status === 401) {
+        console.error('Access token appears to be expired. Please generate a new one.');
+      }
     }
     process.exit(1);
   }
