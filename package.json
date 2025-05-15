@@ -2,6 +2,7 @@
   "name": "whoop-dashboard",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://mouawaz.github.io/whoop-dashboard",
   "dependencies": {
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
@@ -43,6 +44,7 @@
     ]
   },
   "devDependencies": {
-    "dotenv": "^16.5.0"
+    "dotenv": "^16.5.0",
+    "gh-pages": "^6.3.0"
   }
 }
