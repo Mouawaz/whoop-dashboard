@@ -4,15 +4,22 @@ const axios = require('axios');
 
 async function fetchWhoopData() {
   try {
-    // Use the access token directly from environment variable
-    const accessToken = process.env.WHOOP_ACCESS_TOKEN;
+    // Get new access token using refresh token
+    console.log('Refreshing access token...');
+    const tokenResponse = await axios.post('https://api.prod.whoop.com/oauth/oauth2/token', {
+      grant_type: 'refresh_token',
+      refresh_token: process.env.WHOOP_REFRESH_TOKEN,
+      client_id: process.env.WHOOP_CLIENT_ID,
+      client_secret: process.env.WHOOP_CLIENT_SECRET
+    });
+
+    const accessToken = tokenResponse.data.access_token;
+    // Save the new refresh token for next time
+    const newRefreshToken = tokenResponse.data.refresh_token;
     
-    // Verify we have an access token
-    if (!accessToken) {
-      throw new Error('No access token found. Please set the WHOOP_ACCESS_TOKEN environment variable.');
-    }
+    console.log('Token refreshed successfully');
     
-    // Use the access token to fetch data
+    // Now use the access token to fetch data
     const headers = {
       'Authorization': `Bearer ${accessToken}`
     };
@@ -55,15 +62,17 @@ async function fetchWhoopData() {
     }, null, 2));
     
     console.log('Data updated successfully');
+    
+    // If the refresh token has changed, we should log it so it can be updated in GitHub secrets
+    if (newRefreshToken && newRefreshToken !== process.env.WHOOP_REFRESH_TOKEN) {
+      console.log('New refresh token received. Update your GitHub secret with this value:');
+      console.log(newRefreshToken);
+    }
   } catch (error) {
     console.error('Error fetching Whoop data:', error.message);
     if (error.response) {
+      console.error('Response status:', error.response.status);
       console.error('Response data:', error.response.data);
-      
-      // Check if the error is due to an expired token
-      if (error.response.status === 401) {
-        console.error('Access token appears to be expired. Please generate a new one.');
-      }
     }
     process.exit(1);
   }

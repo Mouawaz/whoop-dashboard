@@ -159,7 +159,7 @@ function App() {
     async function fetchData() {
       try {
         // In a real deployment, this would be the JSON data updated by GitHub Actions
-        const response = await fetch('./data/all-data.json');
+        const response = await fetch('/whoop-dashboard/data/all-data.json');
         if (!response.ok) {
           throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
         }

@@ -2,7 +2,7 @@ name: Update Whoop Data
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # Runs every 50 minutes to stay within the 1-hour token validity
+    - cron: '0 */6 * * *'  # Runs every 6 hours
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
         env:
           WHOOP_CLIENT_ID: ${{ secrets.WHOOP_CLIENT_ID }}
           WHOOP_CLIENT_SECRET: ${{ secrets.WHOOP_CLIENT_SECRET }}
-          WHOOP_ACCESS_TOKEN: ${{ secrets.WHOOP_ACCESS_TOKEN }}
+          WHOOP_REFRESH_TOKEN: ${{ secrets.WHOOP_REFRESH_TOKEN }}
           
       - name: Commit and push if changes
         run: |
