@@ -55,27 +55,31 @@ async function fetchWhoopData() {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
-    // Get recovery data
+    // Try different API endpoint patterns - start with the endpoint base URL
+    const baseUrl = 'https://api.prod.whoop.com';
+    
+    // Updated API endpoints based on the available scopes
     console.log('Fetching recovery data...');
-    const recoveryResponse = await axios.get('https://api.prod.whoop.com/v1/cycle/recovery', { headers });
+    const recoveryResponse = await axios.get(`${baseUrl}/api/v1/recovery`, { headers });
     
-    // Get cycle data
     console.log('Fetching cycles data...');
-    const cycleResponse = await axios.get('https://api.prod.whoop.com/v1/cycles', { headers });
+    const cycleResponse = await axios.get(`${baseUrl}/api/v1/cycles`, { headers });
     
-    // Get sleep data
     console.log('Fetching sleep data...');
-    const sleepResponse = await axios.get('https://api.prod.whoop.com/v1/cycle/sleep', { headers });
+    const sleepResponse = await axios.get(`${baseUrl}/api/v1/sleep`, { headers });
     
-    // Get workout data
     console.log('Fetching workout data...');
-    const workoutResponse = await axios.get('https://api.prod.whoop.com/v1/cycle/workout', { headers });
+    const workoutResponse = await axios.get(`${baseUrl}/api/v1/workout`, { headers });
+    
+    console.log('Fetching profile data...');
+    const profileResponse = await axios.get(`${baseUrl}/api/v1/profile`, { headers });
 
     // Write data to files
     fs.writeFileSync(path.join(dataDir, 'recovery.json'), JSON.stringify(recoveryResponse.data, null, 2));
     fs.writeFileSync(path.join(dataDir, 'cycle.json'), JSON.stringify(cycleResponse.data, null, 2));
     fs.writeFileSync(path.join(dataDir, 'sleep.json'), JSON.stringify(sleepResponse.data, null, 2));
     fs.writeFileSync(path.join(dataDir, 'workout.json'), JSON.stringify(workoutResponse.data, null, 2));
+    fs.writeFileSync(path.join(dataDir, 'profile.json'), JSON.stringify(profileResponse.data, null, 2));
     
     // Also create a combined data file for easy access
     fs.writeFileSync(path.join(dataDir, 'all-data.json'), JSON.stringify({
@@ -83,6 +87,7 @@ async function fetchWhoopData() {
       cycle: cycleResponse.data,
       sleep: sleepResponse.data,
       workout: workoutResponse.data,
+      profile: profileResponse.data,
       lastUpdated: new Date().toISOString()
     }, null, 2));
     
@@ -101,6 +106,12 @@ async function fetchWhoopData() {
       console.error('Response status:', error.response.status);
       console.error('Response headers:', JSON.stringify(error.response.headers));
       console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+      
+      // If one endpoint fails, try to continue with others
+      if (error.config && error.config.url) {
+        console.error(`Error occurred with endpoint: ${error.config.url}`);
+        console.log('Continuing with other endpoints...');
+      }
     } else if (error.request) {
       console.error('No response received:', error.request);
     } else {
